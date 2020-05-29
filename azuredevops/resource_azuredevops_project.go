@@ -66,7 +66,8 @@ func resourceAzuredevopsProjectSetToState(d *schema.ResourceData, project *core.
 }
 
 func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(core.Client)
+	client := meta.(*core.Client)
+	myclient := *client
 	ctx := context.Background()
 	name := d.Get("name").(string)
 	description := d.Get("description").(string)
@@ -89,18 +90,18 @@ func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) 
 
 	log.Printf("[DEBUG] create azuredevops project %q", *QueueCreateProjectArgs.ProjectToCreate.Name)
 
-	_, err := client.QueueCreateProject(ctx, QueueCreateProjectArgs)
+	_, err := myclient.QueueCreateProject(ctx, QueueCreateProjectArgs)
 	if err != nil {
 		return err
 	}
 	
 	time.Sleep(10 * time.Second)
 	// Get first page of the list of team projects for your organization
-	responseValue, err := client.GetProjects(ctx, core.GetProjectsArgs{})
+	top := 3000
+	responseValue, err := myclient.GetProjects(ctx, core.GetProjectsArgs{Top: &top})
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	for responseValue != nil {
 		// Log the page of team project names
 		for _, teamProjectReference := range (*responseValue).Value {
@@ -110,7 +111,7 @@ func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) 
 			myprojectId := (*teamProjectReference.Id).String()
 			d.SetId(myprojectId )
 			log.Printf(" BREAK ")
-	//		break
+			break
 			}
 		}
 		// if continuationToken has a value, then there is at least one more page of projects to get
@@ -119,7 +120,7 @@ func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) 
 			projectArgs := core.GetProjectsArgs{
 				ContinuationToken: &responseValue.ContinuationToken,
 			}
-			responseValue, err = client.GetProjects(ctx, projectArgs)
+			responseValue, err = myclient.GetProjects(ctx, projectArgs)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -127,17 +128,20 @@ func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) 
 			responseValue = nil
 		}
 	}
+	log.Printf("[DEBUG] BEFORE Read azuredevops project %q", d.Get("name").(string))
 	return resourceAzuredevopsProjectRead(d, meta)
 }
 
 func resourceAzuredevopsProjectRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(core.Client)
+	client := meta.(*core.Client)
+	myclient := *client
 	ctx := context.Background()
 	myprojectId := d.Get("Id").(string)
+	log.Printf("[DEBUG] Read azuredevops project %q", d.Get("name").(string))
 	getProjectArgs := core.GetProjectArgs{
 		ProjectId : &myprojectId ,
 	}
-	project, _ :=  client.GetProject(ctx, getProjectArgs)
+	project, _ :=  myclient.GetProject(ctx, getProjectArgs)
 	resourceAzuredevopsProjectSetToState(d, project)
 	return nil
 }
@@ -147,14 +151,15 @@ func resourceAzuredevopsProjectUpdate(d *schema.ResourceData, meta interface{}) 
 }
 
 func resourceAzuredevopsProjectDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(core.Client)
+	client := meta.(*core.Client)
+	myclient := *client
 	ctx := context.Background()
 	log.Printf("[DEBUG] Delete azuredevops project %s", d.Id())
 	myUuid, _  := uuid.Parse(d.Id())
 	queueDeleteProjectArgs := core.QueueDeleteProjectArgs{
 		ProjectId : &myUuid  ,
 	}
-	_, err := client.QueueDeleteProject(ctx, queueDeleteProjectArgs)
+	_, err := myclient.QueueDeleteProject(ctx, queueDeleteProjectArgs)
 	if err != nil {
 		return err
 	}
@@ -169,7 +174,7 @@ func resourceAzuredevopsProjectDelete(d *schema.ResourceData, meta interface{}) 
 			getProjectArgs := core.GetProjectArgs{
 				ProjectId : &myprojectId  ,
 			}
-			response, err := client.GetProject(ctx, getProjectArgs )
+			response, err := myclient.GetProject(ctx, getProjectArgs )
 			if err != nil {
 				if response == nil {
 					return  meta , "Deleted", nil

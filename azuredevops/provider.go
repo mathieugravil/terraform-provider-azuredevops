@@ -1,13 +1,9 @@
 package azuredevops
 
 import (
-//	"github.com/hashicorp/terraform/helper/schema"
-//"github.com/hashicorp/terraform/terraform"
 "github.com/hashicorp/terraform-plugin-sdk/terraform"
 "github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-"context"
-	"github.com/microsoft/azure-devops-go-api/azuredevops"
-	"github.com/microsoft/azure-devops-go-api/azuredevops/core"
+
 )
 
 func Provider() terraform.ResourceProvider {
@@ -48,11 +44,10 @@ func init() {
 }
 
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
-	address := d.Get("base_url").(string)
-	token := d.Get("token").(string)
-	connection := azuredevops.NewPatConnection(address, token)
-	ctx := context.Background()
-	myclient, err := core.NewClient(ctx, connection)
-	return myclient, err
+	config := Config{
+		Token:      d.Get("token").(string),
+		BaseURL:    d.Get("base_url").(string),
+	}
+	return config.Client()
 }
 
