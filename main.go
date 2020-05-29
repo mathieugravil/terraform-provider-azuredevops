@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/hashicorp/terraform/plugin"
-	"github.com/mathieug/terraform-provider-azuredevops/azuredevops"
+	"github.com/hashicorp/terraform-plugin-sdk/plugin"
+	"github.com/mathieugravil/terraform-provider-azuredevops/azuredevops"
 )
 
 func main() {

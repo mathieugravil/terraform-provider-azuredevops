@@ -14,11 +14,6 @@ import (
 )
 
 var resourceAzuredevopsProjectSchema = map[string]*schema.Schema{
-	"id": {
-		Type:     schema.TypeInt,
-		Optional: true,
-		Computed: true,
-	},
 	"name": {
 		Type:     schema.TypeString,
 		Required: true,
@@ -27,110 +22,23 @@ var resourceAzuredevopsProjectSchema = map[string]*schema.Schema{
 		Type:     schema.TypeString,
 		Required: true,
 	},
-	"url": {
-		Type:     schema.TypeString,
-		Optional: true,
-		Computed: true,
-	},
-	"Links": {
-		Type:     schema.TypeSet,
-		Optional: true,
-		Computed: true,
-	},
-	"state": {
-		Type:     schema.TypeString,
-		Optional: true,
-		Computed: true,
-	},
-	"defaultTeam": {
-		Type:     schema.TypeSet,
-		Optional: true,
-		Computed: true,
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				"id": {
-					Type:     schema.TypeString,
-					Optional: true,
-				},
-				"name": {
-					Type:     schema.TypeString,
-					Optional: true,
-				},
-				"url": {
-					Type:     schema.TypeString,
-					Optional: true,
-				},
-			},
-		},
-	},
-	"revision": {
-		Type:     schema.TypeInt,
-		Computed: true,
-	},
 	"visibility": {
 		Type:     schema.TypeString,
-		Required: true,
+		Optional: true,
 		ValidateFunc: validation.StringInSlice([]string{"private",  "public"}, true),
 		Default:      "private",
 	},
-	"lastUpdateTime": {
-		Type:     schema.TypeString,
-		Computed: true,
-	},
-	"abbreviation": {
+	"source_control_type":{
 		Type:     schema.TypeString,
 		Optional: true,
+		ValidateFunc: validation.StringInSlice([]string{"git",  "tfts"}, true),
+		Default:      "git",
 	},
-	"defaultTeamImageUrl": {
+	"template_type_id":{
 		Type:     schema.TypeString,
-		Computed: true,
-	},
-	"sourceControlType":{
-		Type:     schema.TypeString,
-		Required: true,
-		ValidateFunc: validation.StringInSlice([]string{"Git",  "Tfts"}, true),
-		Default:      "Git",
-	},
-	"templateTypeId":{
-		Type:     schema.TypeString,
-		Required: true,
+		Optional: true,
 		Default:      "adcc42ab-9882-485e-a3ed-7678f01f66bc",
 	},
-/*	"capabilities": {
-		Type:     schema.TypeSet,
-		Required: true,
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				"versioncontrol": {
-					Type:     schema.TypeSet,
-					Required: true,
-					Elem: &schema.Resource{
-						Schema: map[string]*schema.Schema{
-							"sourceControlType":{
-								Type:     schema.TypeString,
-								Required: true,
-								ValidateFunc: validation.StringInSlice([]string{"Git",  "Tfts"}, true),
-								Default:      "Git",
-							},
-						},
-					},
-				},
-				"processTemplate": {
-					Type:     schema.TypeSet,
-					Required: true,
-					Elem: &schema.Resource{
-						Schema: map[string]*schema.Schema{
-							"templateTypeId":{
-								Type:     schema.TypeString,
-								Required: true,
-								Default:      "adcc42ab-9882-485e-a3ed-7678f01f66bc",
-							},
-						},
-					},
-				},
-			},
-		},
-	},*/
 
 }
 
@@ -149,20 +57,12 @@ func resourceAzuredevopsProject() *schema.Resource {
 
 func resourceAzuredevopsProjectSetToState(d *schema.ResourceData, project *core.TeamProject) {
 	var Capa = *project.Capabilities
-	d.SetId(fmt.Sprintf("%d", project.Id))
+	d.SetId((project.Id).String())
 	d.Set("name", project.Name)
 	d.Set("description", project.Description)
-	d.Set("url", project.Url)
-	d.Set("links", project.Links)
-	d.Set("state", project.State)
-	d.Set("defaultTeam", project.DefaultTeam)
-	d.Set("revision", project.Revision)
 	d.Set("visibility", project.Visibility)
-	d.Set("lastUpdateTime", project.LastUpdateTime)
-	d.Set("abbreviation", project.Abbreviation)
-	d.Set("defaultTeamImageUrl", project.DefaultTeamImageUrl)
-	d.Set("sourceControlType", Capa["versioncontrol"]["sourceControlType"])
-	d.Set("templateTypeId", Capa["processTemplate"]["templateTypeId"])
+	d.Set("sourceControlType", Capa["versioncontrol"]["source_control_type"])
+	d.Set("templateTypeId", Capa["processTemplate"]["template_type_id"])
 }
 
 func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) error {
@@ -173,9 +73,9 @@ func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) 
 	visibility :=  core.ProjectVisibility(d.Get("visibility").(string))
 	var capabilities = map[string]map[string]string{}
 	capabilities["versioncontrol"] =  map[string]string{}
-	capabilities["versioncontrol"]["sourceControlType"] = d.Get("sourceControlType").(string)
+	capabilities["versioncontrol"]["sourceControlType"] = d.Get("source_control_type").(string)
 	capabilities["processTemplate"] =  map[string]string{}
-	capabilities["processTemplate"]["templateTypeId"] = d.Get("templateTypeId").(string)
+	capabilities["processTemplate"]["templateTypeId"] = d.Get("template_type_id").(string)
 	MyProject := core.TeamProject{ 
 		Name : &name , 
 		Description : &description , 
@@ -192,6 +92,40 @@ func resourceAzuredevopsProjectCreate(d *schema.ResourceData, meta interface{}) 
 	_, err := client.QueueCreateProject(ctx, QueueCreateProjectArgs)
 	if err != nil {
 		return err
+	}
+	
+	time.Sleep(10 * time.Second)
+	// Get first page of the list of team projects for your organization
+	responseValue, err := client.GetProjects(ctx, core.GetProjectsArgs{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for responseValue != nil {
+		// Log the page of team project names
+		for _, teamProjectReference := range (*responseValue).Value {
+			log.Printf(" %v == %v ? ", name, *teamProjectReference.Name)
+			if *teamProjectReference.Name == name {
+			log.Printf("Name[%v] = %v", *teamProjectReference.Id, *teamProjectReference.Name)
+			myprojectId := (*teamProjectReference.Id).String()
+			d.SetId(myprojectId )
+			log.Printf(" BREAK ")
+	//		break
+			}
+		}
+		// if continuationToken has a value, then there is at least one more page of projects to get
+		if responseValue.ContinuationToken != "" {
+			// Get next page of team projects
+			projectArgs := core.GetProjectsArgs{
+				ContinuationToken: &responseValue.ContinuationToken,
+			}
+			responseValue, err = client.GetProjects(ctx, projectArgs)
+			if err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			responseValue = nil
+		}
 	}
 	return resourceAzuredevopsProjectRead(d, meta)
 }
